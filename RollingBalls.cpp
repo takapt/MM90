@@ -502,10 +502,12 @@ SearchPathResult search_ball_path(Board board, const Pos& start_pos, const vecto
 #if 1
     const int NEW_NEED_COST = 5;
     const int MATCH_MOVE_COST = 10;
+    const int UNEXPECT_RETURN_COST = 0;
     const int REMOVE_COST = 50;
 #else
     const int NEW_NEED_COST = 50000;
     const int MATCH_MOVE_COST = 10000;
+    const int UNEXPECT_RETURN_COST = 200000;
     const int REMOVE_COST = 30000;
 #endif
     rep(dir, 4)
@@ -521,12 +523,22 @@ SearchPathResult search_ball_path(Board board, const Pos& start_pos, const vecto
             int cost = 1;
             if (!board.is_obs(start_pos.next((dir + 2) & 3)))
                 cost += NEW_NEED_COST;
-            if (board.is_color(next) && board.color(next) == target_board.color(next))
-                cost += MATCH_MOVE_COST;
             if (board.is_color(next) && !allow_colors[board.color(next)])
                 cost += REMOVE_COST;
             if (board.is_color(next))
+            {
+                bool easy_return = board.is_obs(next.next(dir));
+                if (!easy_return)
+                    cost += UNEXPECT_RETURN_COST;
+                if (board.color(next) == target_board.color(next))
+                {
+                    if (easy_return)
+                        cost += MATCH_MOVE_COST;
+                    else
+                        cost += 2 * MATCH_MOVE_COST;
+                }
                 cost += match_cost[next.y][next.x];
+            }
 
             dp[next.y][next.x][dir] = cost;
             prev_dir[next.y][next.x][dir] = dir;
@@ -595,7 +607,10 @@ SearchPathResult search_ball_path(Board board, const Pos& start_pos, const vecto
 // //                     assert(board.is_obs(stopper)); // if no need_pos
                 }
                 if (board.is_color(p) && p != start_pos)
+                {
+                    assert(false);
                     obs_pos.push_back(p);
+                }
 
                 d = pd;
             }
@@ -639,10 +654,20 @@ SearchPathResult search_ball_path(Board board, const Pos& start_pos, const vecto
                     int ncost = cost + (dir == cur_dir ? 0 : 1);
                     if (dir != cur_dir && !board.is_obs(cur.next((dir + 2) & 3)))
                         ncost += NEW_NEED_COST;
-                    if (board.is_color(next) && board.color(next) == target_board.color(next))
-                        ncost += MATCH_MOVE_COST;
                     if (board.is_color(next))
+                    {
+                        bool easy_return = board.is_obs(next.next(dir));
+                        if (!easy_return)
+                            ncost += UNEXPECT_RETURN_COST;
+                        if (board.color(next) == target_board.color(next))
+                        {
+                            if (easy_return)
+                                ncost += MATCH_MOVE_COST;
+                            else
+                                ncost += 2 * MATCH_MOVE_COST;
+                        }
                         ncost += match_cost[next.y][next.x];
+                    }
                     if (board.is_color(next) && !allow_colors[board.color(next)])
                         ncost += REMOVE_COST;
 
