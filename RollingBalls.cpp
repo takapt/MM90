@@ -130,7 +130,7 @@ Timer g_timer;
 #ifdef LOCAL
 #define USE_TIMER
 #ifdef USE_TIMER
-const double G_TL_SEC = 9.5;
+const double G_TL_SEC = 10;
 #else
 const double G_TL_SEC = 1e9;
 #endif
@@ -504,7 +504,7 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
     assert(board.empty(start_pos));
     assert(count(all(allow_colors), true));
 
-    const int inf = 100;
+    const int inf = 51;
     int dp[64][64][4];
     int prev_dir[64][64][4];
     int goal_dp[64][64][4];
@@ -516,7 +516,10 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
     }
 
     using P = tuple<int, Pos, int, bool>;
-    priority_queue<P, vector<P>, greater<P>> q;
+//     priority_queue<P, vector<P>, greater<P>> q;
+    static vector<P> q[inf + 1];
+    rep(i, inf + 1)
+        q[i].clear();
 
 #if 1
     const int NEW_NEED_COST = 5;
@@ -557,36 +560,46 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                     }
                     gcost += match_cost[next.y][next.x];
 
-                    goal_dp[next.y][next.x][dir] = gcost;
-                    goal_prev_dir[next.y][next.x][dir] = -1;
-                    q.push(P(gcost, next, dir, true));
+                    if (gcost < goal_dp[next.y][next.x][dir])
+                    {
+                        goal_dp[next.y][next.x][dir] = gcost;
+                        goal_prev_dir[next.y][next.x][dir] = -1;
+                        q[gcost].push_back(P(gcost, next, dir, true));
+                    }
                 }
 
                 cost += REMOVE_COST;
             }
 
 
-            dp[next.y][next.x][dir] = cost;
-            prev_dir[next.y][next.x][dir] = -1;
-            q.push(P(cost, next, dir, false));
+            if (cost < dp[next.y][next.x][dir])
+            {
+                dp[next.y][next.x][dir] = cost;
+                prev_dir[next.y][next.x][dir] = -1;
+                //             q.push(P(cost, next, dir, false));
+                q[cost].push_back(P(cost, next, dir, false));
+            }
         }
     }
 
     const ull board_hash = board.hash();
 
-    while (!q.empty())
+//     while (!q.empty())
+    rep(cur_cost, inf) while (!q[cur_cost].empty())
     {
         int cost, cur_dir;
         Pos cur;
         bool is_goal;
-        tie(cost, cur, cur_dir, is_goal) = q.top();
-        q.pop();
+//         tie(cost, cur, cur_dir, is_goal) = q.top();
+//         q.pop();
+        tie(cost, cur, cur_dir, is_goal) = q[cur_cost].back();
+        q[cur_cost].pop_back();
 
         assert(!board.is_wall(cur));
         assert(0 <= cur_dir && cur_dir < 4);
         assert(in_rect(cur.x, cur.y, board.width(), board.height()));
 
-        if (cost > 50)
+        if (cost >= inf)
             return SearchPathResult();
 
         if (cost > dp[cur.y][cur.x][cur_dir])
@@ -727,7 +740,8 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                             {
                                 goal_dp[next.y][next.x][dir] = gcost;
                                 goal_prev_dir[next.y][next.x][dir] = cur_dir;
-                                q.push(P(gcost, next, dir, true));
+//                                 q.push(P(gcost, next, dir, true));
+                                q[gcost].push_back(P(gcost, next, dir, true));
                             }
                         }
 
@@ -739,7 +753,8 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                     {
                         dp[next.y][next.x][dir] = ncost;
                         prev_dir[next.y][next.x][dir] = cur_dir;
-                        q.push(P(ncost, next, dir, false));
+//                         q.push(P(ncost, next, dir, false));
+                        q[ncost].push_back(P(ncost, next, dir, false));
                     }
                 }
             }
@@ -845,7 +860,7 @@ vector<Pos> restore_full_path(const vector<Pos>& path)
     return full_path;
 }
 
-vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
+vector<vector<Pos>> search_paths(Board board, const Pos& main_target, vector<vector<int>> match_cost)
 {
     const int h = board.height(), w = board.width();
 
@@ -854,11 +869,18 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
     // TODO: remove_costを入れる
     vector<Pos> target_stack;
     target_stack.push_back(main_target);
-    vector<vector<int>> match_cost(h, vector<int>(w));
+//     vector<vector<int>> match_cost(h, vector<int>(w));
     set<pair<int, vector<Pos>>> visited;
     map<Pos, SearchPathResult> searched_results;
     while (!target_stack.empty())
     {
+        vector<Pos> del;
+        for (int i = 1; i < (int)target_stack.size(); ++i)
+            if (board.is_obs(target_stack[i]))
+                del.push_back(target_stack[i]);
+        for (auto& p : del)
+            target_stack.erase(find(all(target_stack), p));
+
 //         dump(make_pair(target_stack.size(), paths.size()));
         auto key = make_pair(paths.size(), target_stack);
         if (visited.count(key))
@@ -871,9 +893,7 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
         if (moves > 20)
             return {};
 
-        if (target_stack.size() >= 5)
-            return {};
-        if (paths.size() >= 5)
+        if (paths.size() + target_stack.size() >= 5)
             return {};
 
 //         dump(target_stack);
@@ -913,7 +933,7 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
             for (auto& it : searched_results)
             {
                 for (auto& p : it.second.path)
-                    goal_cost[p.y][p.x] = 114514;
+                    goal_cost[p.y][p.x] = 130;
             }
             for (auto& p : result.obs_pos)
                 goal_cost[p.y][p.x] = 114514;
@@ -995,6 +1015,8 @@ class RollingBalls
 public:
     vector<string> restorePattern(const vector<string>& start, const vector<string>& target)
     {
+        g_timer.start();
+
         ::target_board = Board(target);
         Board start_board(start);
         const int h = target_board.height(), w = target_board.width();
@@ -1011,22 +1033,32 @@ public:
         double best_score = -1;
         vector<string> best_res;
 
-        rep(trytry_i, 20)
+//         rep(trytry_i, 10)
+        while (g_timer.get_elapsed() < G_TL_SEC)
         {
             taboo.clear();
             Board board = start_board;
 
+            vector<string> local_best_res;
+            double local_best_score = -1;
+
             vector<string> res;
             int last_try_i = -1;
-            rep(try_i, max_rolls * 10)
+            int last_best_i = -1;
+            rep(try_i, max_rolls * 5)
             {
-                if (try_i - last_try_i > min<int>(max_rolls, 2 * target_poss.size()))
+                if (try_i - last_try_i > min<int>(max_rolls, 3 * target_poss.size()))
                     break;
+                if (g_timer.get_elapsed() > G_TL_SEC)
+                    break;
+
+                const bool diff_color_match = try_i - last_best_i > target_poss.size();
 
                 vector<Pos> unmatch_target_poss;
                 rep(y, h) rep(x, w)
                 {
-                    if (target_board.is_color(x, y) && !board.is_color(x, y))
+//                     if (target_board.is_color(x, y) && !board.is_color(x, y))
+                    if (target_board.is_color(x, y) && (board.color(x, y) != target_board.color(x, y) || diff_color_match && board.empty(x, y)))
                     {
                         unmatch_target_poss.push_back(Pos(x, y));
                     }
@@ -1034,13 +1066,23 @@ public:
                 if (unmatch_target_poss.empty())
                     break;
 
+                vector<vector<int>> match_cost(h, vector<int>(w));
+                if (diff_color_match)
+                {
+                    for (auto& p : target_poss)
+                    {
+                        if (board.color(p) == target_board.color(p))
+                            match_cost[p.y][p.x] = 114514;
+                    }
+                }
+
                 Pos target_pos = unmatch_target_poss[g_rand.next_int(unmatch_target_poss.size())];
 //                 Pos target_pos = unmatch_target_poss[(trytry_i * 10 + try_i) % unmatch_target_poss.size()];
 //                 target_pos = Pos(2, 0);
                 //             if (try_i > 500 && board.empty(Pos(12, 16)))
                 //                 target_pos = Pos(12, 16);
 
-                auto paths = search_paths(board, target_pos);
+                auto paths = search_paths(board, target_pos, match_cost);
                 if (paths.empty())
                     continue;
 
@@ -1055,6 +1097,13 @@ public:
                     continue;
 
                 double score = nboard.game_score(target_board);
+                if (score > local_best_score)
+                {
+                    local_best_score = score;
+                    local_best_res = res;
+                    last_best_i = try_i;
+                }
+
                 if (score > best_score)
                 {
                     best_score = score;
@@ -1068,6 +1117,7 @@ public:
             }
         }
         dump(best_score);
+        dump(g_timer.get_elapsed());
         return best_res;
     }
 
