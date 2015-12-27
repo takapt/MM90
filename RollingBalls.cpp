@@ -523,7 +523,7 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
         q[i].clear();
 
 #if 1
-    const int NEW_NEED_COST = 5;
+    const int NEW_NEED_COST = 10;
     const int MATCH_MOVE_COST = 5;
     const int REMOVE_COST = 5;
 #else
@@ -570,6 +570,7 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                 }
 
                 cost += REMOVE_COST;
+                cost += match_cost[next.y][next.x];
             }
 
 
@@ -747,6 +748,7 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                         }
 
                         ncost += REMOVE_COST;
+                        ncost += match_cost[next.y][next.x];
                     }
 
 
@@ -822,6 +824,8 @@ vector<Pos> search_path_to_remove_ball(Board board, const Pos& start_pos, const 
             const int UNEXPECT_RETURN_COST = 10;
             if (board.empty(cur.next((dir + 2) & 3)))
                 ncost += UNEXPECT_RETURN_COST;
+            else if (board.is_color(cur.next((dir + 2) & 3)))
+                ncost += 2;
 
             if (ncost < dp[next.y][next.x])
             {
