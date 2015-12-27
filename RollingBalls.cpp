@@ -961,7 +961,9 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
                 target_stack.erase(it);
 
             target_stack.push_back(target);
-            target_stack.push_back(need_target);
+            if (target != need_target)
+                target_stack.push_back(need_target);
+            assert(count(all(target_stack), target) == 1);
 
             searched_results[target] = result;
 
@@ -1009,7 +1011,7 @@ public:
         double best_score = -1;
         vector<string> best_res;
 
-        rep(trytry_i, 100)
+        rep(trytry_i, 20)
         {
             taboo.clear();
             Board board = start_board;
