@@ -524,8 +524,8 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
 
 #if 1
     const int NEW_NEED_COST = 5;
-    const int MATCH_MOVE_COST = 10;
-    const int REMOVE_COST = 10;
+    const int MATCH_MOVE_COST = 5;
+    const int REMOVE_COST = 5;
 #else
     const int NEW_NEED_COST = 50000;
     const int MATCH_MOVE_COST = 10000;
