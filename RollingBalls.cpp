@@ -240,6 +240,7 @@ ostream& operator<<(ostream& os, const Pos& pos)
     return os;
 }
 
+
 int moved_dir(const Pos& from, const Pos& to)
 {
     Pos diff = to - from;
@@ -249,6 +250,17 @@ int moved_dir(const Pos& from, const Pos& to)
             return dir;
     }
     assert(false);
+}
+
+bool valid_path(const vector<Pos>& path)
+{
+    assert(path.size() >= 2);
+    rep(i, (int)path.size() - 1)
+    {
+        int dir = moved_dir(path[i], path[i + 1]);
+        assert(path[i] != path[i + 1]);
+    }
+    return true;
 }
 
 class Random
@@ -418,7 +430,8 @@ public:
     void move(const Pos& from, const Pos& to)
     {
         assert(is_color(from));
-        assert(!is_wall(to) && !is_color(to));
+        assert(!is_wall(to));
+        assert(!is_color(to));
 
         int c = color(from);
         remove(from);
@@ -508,23 +521,22 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
 #if 1
     const int NEW_NEED_COST = 5;
     const int MATCH_MOVE_COST = 10;
-    const int UNEXPECT_RETURN_COST = 0;
-    const int REMOVE_COST = 3000;
+    const int REMOVE_COST = 10;
 #else
     const int NEW_NEED_COST = 50000;
     const int MATCH_MOVE_COST = 10000;
-    const int UNEXPECT_RETURN_COST = 200000;
     const int REMOVE_COST = 30000;
 #endif
     rep(dir, 4)
     {
         dp[start_pos.y][start_pos.x][dir] = 0;
+        goal_dp[start_pos.y][start_pos.x][dir] = 0;
         prev_dir[start_pos.y][start_pos.x][dir] = -1;
     }
     rep(dir, 4)
     {
         const Pos next = start_pos.next(dir);
-        if (!board.is_wall(next) && (!board.is_color(next) || allow_colors[board.color(next)]))
+        if (!board.is_wall(next))
         {
             int cost = 1;
             if (!board.is_obs(start_pos.next((dir + 2) & 3)))
@@ -533,14 +545,9 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
             if (board.is_color(next))
             {
                 const bool easy_return = board.is_obs(next.next(dir));
-                if (!easy_return)
-                    cost += UNEXPECT_RETURN_COST;
-
                 if (allow_colors[board.color(next)])
                 {
                     int gcost = cost;
-                    if (!easy_return)
-                        gcost += UNEXPECT_RETURN_COST;
                     if (board.color(next) == target_board.color(next))
                     {
                         if (easy_return)
@@ -618,6 +625,17 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                 assert(0 <= d && d < 4);
                 assert(in_rect(p.x, p.y, board.width(), board.height()));
 
+                if (board.is_color(p) && p != cur)
+                {
+//                     dump(start_pos);
+//                     dump(p);
+//                     dump(cur);
+//                     dump(path);
+//                     dump(cost);
+//                     assert(false);
+                    obs_pos.push_back(p);
+                }
+
                 const int pd = prev_dir[p.y][p.x][d];
 
 //                 cerr << "-------------------------------" << endl;
@@ -641,16 +659,6 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
 //
 // //                     assert(board.is_obs(stopper)); // if no need_pos
                 }
-                if (board.is_color(p) && p != cur)
-                {
-//                     dump(start_pos);
-//                     dump(p);
-//                     dump(cur);
-//                     dump(path);
-//                     dump(cost);
-//                     assert(false);
-                    obs_pos.push_back(p);
-                }
 
                 d = pd;
             }
@@ -660,7 +668,8 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                 need_pos.push_back(start_pos.next(moved_dir(path[path.size() - 2], path.back())));
             }
 //             dump(path);
-            assert(obs_pos.empty());
+            uniq(obs_pos);
+//             assert(obs_pos.empty());
 
             bool ok = true;
             rep(i, (int)path.size() - 1)
@@ -705,8 +714,6 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
                         if (allow_colors[board.color(next)])
                         {
                             int gcost = ncost;
-                            if (!easy_return)
-                                gcost += UNEXPECT_RETURN_COST;
                             if (board.color(next) == target_board.color(next))
                             {
                                 if (easy_return)
@@ -741,17 +748,23 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
     return SearchPathResult();
 }
 
-vector<Pos> search_path_to_remove_ball(const Board& board, const Pos& start_pos, const vector<vector<int>>& goal_cost)
+vector<Pos> search_path_to_remove_ball(Board board, const Pos& start_pos, const vector<vector<int>>& goal_cost)
 {
+    assert(board.is_color(start_pos));
+    board.set(start_pos, EMPTY);
+
     const int inf = 1000;
     int dp[64][64];
     Pos prev_pos[64][64];
+    int goal_dp[64][64];
+    Pos goal_prev_pos[64][64];
     rep(y, board.height()) rep(x, board.width())
-        dp[y][x] = inf;
+        dp[y][x] = goal_dp[y][x] = inf;
 
     using P = tuple<int, bool, Pos>;
     priority_queue<P, vector<P>, greater<P>> q;
     dp[start_pos.y][start_pos.x] = 0;
+    goal_dp[start_pos.y][start_pos.x] = 0;
     q.push(P(0, false, start_pos));
     while (!q.empty())
     {
@@ -763,11 +776,16 @@ vector<Pos> search_path_to_remove_ball(const Board& board, const Pos& start_pos,
 
         if (is_goal)
         {
-            vector<Pos> path;
-            for (Pos p = cur; p != start_pos; p = prev_pos[p.y][p.x])
+            vector<Pos> path = {cur};
+            for (Pos p = goal_prev_pos[cur.y][cur.x]; p != start_pos; p = prev_pos[p.y][p.x])
+            {
+                assert(dp[p.y][p.x] < inf);
                 path.push_back(p);
+            }
             path.push_back(start_pos);
             reverse(all(path));
+            assert(valid_path(path));
+//             dump(path);
             return path;
         }
 
@@ -780,6 +798,8 @@ vector<Pos> search_path_to_remove_ball(const Board& board, const Pos& start_pos,
             while (board.empty(next))
                 next.move(dir);
             next.move((dir + 2) & 3);
+            assert(in_rect(next.x, next.y, board.width(), board.height()));
+            assert(board.is_obs(next.next(dir)));
 
             // TODO: WALLとcolorでコストに差をつける
             int ncost = cost + 1;
@@ -790,15 +810,39 @@ vector<Pos> search_path_to_remove_ball(const Board& board, const Pos& start_pos,
             if (ncost < dp[next.y][next.x])
             {
                 dp[next.y][next.x] = ncost;
+                prev_pos[next.y][next.x] = cur;
                 q.push(P(ncost, false, next));
             }
 
             int gcost = ncost + goal_cost[next.y][next.x];
-            if (gcost < inf)
+            if (gcost < goal_dp[next.y][next.x])
+            {
+                goal_dp[next.y][next.x] = gcost;
+                goal_prev_pos[next.y][next.x] = cur;
                 q.push(P(gcost, true, next));
+            }
         }
     }
     return {};
+}
+
+vector<Pos> restore_full_path(const vector<Pos>& path)
+{
+    assert(path.size() >= 2);
+
+    vector<Pos> full_path;
+    rep(i, (int)path.size() - 1)
+    {
+        int dir = moved_dir(path[i], path[i + 1]);
+        Pos p = path[i];
+        while (p != path[i + 1])
+        {
+            full_path.push_back(p);
+            p.move(dir);
+        }
+    }
+    full_path.push_back(path.back());
+    return full_path;
 }
 
 vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
@@ -807,10 +851,12 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
 
     vector<vector<Pos>> paths;
     // TODO: stackでやってるのは、ダブリdijkstraを避けるため。stackなくすべきか？
+    // TODO: remove_costを入れる
     vector<Pos> target_stack;
     target_stack.push_back(main_target);
     vector<vector<int>> match_cost(h, vector<int>(w));
     set<pair<int, vector<Pos>>> visited;
+    map<Pos, SearchPathResult> searched_results;
     while (!target_stack.empty())
     {
 //         dump(make_pair(target_stack.size(), paths.size()));
@@ -830,10 +876,15 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
         if (paths.size() >= 5)
             return {};
 
+//         dump(target_stack);
+//         dump(paths);
         Pos target = target_stack.back();
         target_stack.pop_back();
         assert(count(all(target_stack), target) == 0);
-        assert(board.empty(target));
+//         assert(board.empty(target));
+        if (!board.empty(target))
+            continue;
+
 
         vector<bool> allow_colors(16);
         if (target_stack.empty())
@@ -843,16 +894,65 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
             fill(all(allow_colors), true);
 
         SearchPathResult result = search_ball_path(board, target, allow_colors, match_cost);
+//         dump(result.path);
+//         dump(result.need_pos);
+//         dump(result.obs_pos);
+//         dump(result.size_info());
 
 //         if (target_stack.empty() && main_target == Pos(12, 16))
 //             dump(result.path);
 
         if (!result.is_valid())
             return {};
-        if (result.obs_pos.size())
-            return {};
 
-        if (result.need_pos.size())
+        if (result.obs_pos.size())
+        {
+            vector<vector<int>> goal_cost(h, vector<int>(w, 20));
+            for (auto &p : target_stack)
+                goal_cost[p.y][p.x] = 0;
+            for (auto& it : searched_results)
+            {
+                for (auto& p : it.second.path)
+                    goal_cost[p.y][p.x] = 114514;
+            }
+            for (auto& p : result.obs_pos)
+                goal_cost[p.y][p.x] = 114514;
+
+            vector<bool> done(result.obs_pos.size());
+            while (count(all(done), false))
+            {
+//                 dump(result.obs_pos);
+//                 dump(done);
+                bool updated = false;
+                rep(i, done.size())
+                {
+                    if (!done[i])
+                    {
+                        auto path_to_remove = search_path_to_remove_ball(board, result.obs_pos[i], goal_cost);
+                        if (path_to_remove.size())
+                        {
+                            paths.push_back(path_to_remove);
+                            board.move(path_to_remove[0], path_to_remove.back());
+                            done[i] = true;
+                            updated = true;
+//                             dump(paths);
+                        }
+                    }
+                }
+                if (!updated)
+                    break;
+//                 dump(updated);
+            }
+            if (count(all(done), false))
+            {
+                return {};
+            }
+//             result.obs_pos.clear();
+
+//             cerr << "unko" << endl;
+            target_stack.push_back(target);
+        }
+        else if (result.need_pos.size())
         {
             Pos need_target = result.need_pos.back();
 
@@ -862,6 +962,8 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
 
             target_stack.push_back(target);
             target_stack.push_back(need_target);
+
+            searched_results[target] = result;
 
 //         dump(result.size_info());
 //             dump(target_stack);
@@ -873,8 +975,16 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target)
             paths.push_back(result.path);
             board.move(result.path[0], result.path.back());
             match_cost[result.path.back().y][result.path.back().x] += 15;
+
+            searched_results.erase(target);
         }
     }
+#ifndef NDEBUG
+    for (auto& path : paths)
+    {
+        assert(valid_path(path));
+    }
+#endif
     return paths;
 }
 
@@ -924,6 +1034,7 @@ public:
 
                 Pos target_pos = unmatch_target_poss[g_rand.next_int(unmatch_target_poss.size())];
 //                 Pos target_pos = unmatch_target_poss[(trytry_i * 10 + try_i) % unmatch_target_poss.size()];
+//                 target_pos = Pos(2, 0);
                 //             if (try_i > 500 && board.empty(Pos(12, 16)))
                 //                 target_pos = Pos(12, 16);
 
@@ -985,6 +1096,17 @@ int main()
     cin >> h;
     assert(h == start.size());
     input(target, h);
+
+// #define OUTPUT_INPUT
+#ifdef OUTPUT_INPUT
+    ofstream os("input");
+    os << h << endl;
+    os << start << endl;
+    os << h << endl;
+    os << target << endl;
+    os.close();
+    return 0;
+#endif
 
     auto ret = RollingBalls().restorePattern(start, target);
     cout << ret.size() << endl;
