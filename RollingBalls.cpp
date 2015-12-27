@@ -375,7 +375,6 @@ public:
         return is_color(p.x, p.y);
     }
 
-
     int color(int x, int y) const
     {
         assert(valid_access(x, y));
@@ -504,16 +503,18 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
     assert(board.empty(start_pos));
     assert(count(all(allow_colors), true));
 
-    const int inf = 51;
-    int dp[64][64][4];
-    int prev_dir[64][64][4];
-    int goal_dp[64][64][4];
-    int goal_prev_dir[64][64][4];
-    rep(y, board.height()) rep(x, board.width()) rep(dir, 4)
-    {
-        dp[y][x][dir] = inf;
-        goal_dp[y][x][dir] = inf;
-    }
+    const char inf = 51;
+    char dp[64][64][4];
+    char prev_dir[64][64][4];
+    char goal_dp[64][64][4];
+    char goal_prev_dir[64][64][4];
+    clr(dp, inf);
+    clr(goal_dp, inf);
+//     rep(y, board.height()) rep(x, board.width()) rep(dir, 4)
+//     {
+//         dp[y][x][dir] = inf;
+//         goal_dp[y][x][dir] = inf;
+//     }
 
     using P = tuple<int, Pos, int, bool>;
 //     priority_queue<P, vector<P>, greater<P>> q;
@@ -1033,8 +1034,11 @@ public:
         double best_score = -1;
         vector<string> best_res;
 
-//         rep(trytry_i, 10)
+#ifdef USE_TIMER
         while (g_timer.get_elapsed() < G_TL_SEC)
+#else
+        rep(trytry_i, 10)
+#endif
         {
             taboo.clear();
             Board board = start_board;
