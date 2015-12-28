@@ -1187,9 +1187,6 @@ public:
 
             Board board = start_board;
 
-            map<Pos, int> dematch;
-            map<Pos, vector<int>> moves_for_match;
-
             vector<string> local_best_res;
             double local_best_score = -1;
             Board local_best_board = start_board;
@@ -1206,21 +1203,15 @@ public:
                 if (g_timer.get_elapsed() > G_TL_SEC)
                     break;
 
-                int unmatches = 0;
-                rep(y, h) rep(x, w)
-                    if (target_board.is_color(x, y) && board.color(x, y) != target_board.color(x, y))
-                        ++unmatches;
-
                 ++trials;
 
                 const bool diff_color_match = try_i - last_best_i > target_poss.size();
-//                 const bool diff_color_match = try_i - last_best_i > 10 * unmatches;
 
                 vector<Pos> unmatch_target_poss;
                 vector<double> ratio;
-                rep(y, h) rep(x, w)
+                for (auto& p : target_poss)
                 {
-//                     if (target_board.is_color(x, y) && !board.is_color(x, y))
+                    const int x = p.x, y = p.y;
                     if (target_board.is_color(x, y) && (board.color(x, y) != target_board.color(x, y) || diff_color_match && board.empty(x, y)))
                     {
                         unmatch_target_poss.push_back(Pos(x, y));
@@ -1250,13 +1241,7 @@ public:
                     }
                 }
 
-//                 Pos target_pos = unmatch_target_poss[g_rand.next_int(unmatch_target_poss.size())];
-                Pos target_pos = unmatch_target_poss[g_rand.select(ratio)];
-//                 Pos target_pos = unmatch_target_poss[(trytry_i * 10 + try_i) % unmatch_target_poss.size()];
-//                 target_pos = Pos(2, 0);
-                //             if (try_i > 500 && board.empty(Pos(12, 16)))
-                //                 target_pos = Pos(12, 16);
-
+                const Pos target_pos = unmatch_target_poss[g_rand.select(ratio)];
                 auto paths = search_paths(board, target_pos, match_cost);
                 if (paths.empty())
                     continue;
@@ -1267,16 +1252,11 @@ public:
                 vector<string> nres = res;
                 for (auto& path : paths)
                 {
-//                     dump(path);
-                    if (target_board.is_color(path[0]) && target_board.color(path[0]) == nboard.color(path[0]))
-                        ++dematch[path[0]];
-
                     assert(nboard.is_color(path[0]));
                     nboard.move(path[0], path.back());
                     add_res(path, nres);
                 }
                 const int moves = nres.size() - res.size();
-                moves_for_match[target_pos].push_back(moves);
                 if (nres.size() > max_rolls)
                     continue;
 
@@ -1300,13 +1280,6 @@ public:
 
                 last_try_i = try_i;
             }
-//             dump(moves_for_match);
-//             for (auto& it : moves_for_match)
-//             {
-//                 cerr << it << endl;
-//             }
-//             cerr << endl;
-
             for (auto& p : target_poss)
             {
                 if (local_best_board.color(p) != target_board.color(p))
