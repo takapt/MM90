@@ -1170,17 +1170,25 @@ public:
 
         const int max_rolls = target_poss.size() * 20;
 
-        double best_score = start_board.game_score(target_board);;
+        double best_score = start_board.game_score(target_board);
         vector<string> best_res;
 
+//         vector<vector<int>> global_match_cost(h, vector<int>(w));
+        map<Pos, int> fails;
+
+        int trytry_i = 0;
 #ifdef USE_TIMER
         while (g_timer.get_elapsed() < G_TL_SEC)
 #else
-        rep(trytry_i, 100)
+        while (trytry_i < 10)
 #endif
         {
             taboo.clear();
+
             Board board = start_board;
+
+            map<Pos, int> dematch;
+            map<Pos, vector<int>> moves_for_match;
 
             vector<string> local_best_res;
             double local_best_score = -1;
@@ -1221,6 +1229,13 @@ public:
                     break;
 
                 vector<vector<int>> match_cost(h, vector<int>(w));
+                for (auto& it : fails)
+                {
+                    assert(trytry_i > 0);
+                    auto& p = it.first;
+                    match_cost[p.y][p.x] = (double)it.second / trytry_i * 50;
+                }
+
                 if (diff_color_match)
                 {
                     for (auto& p : target_poss)
@@ -1247,10 +1262,15 @@ public:
                 for (auto& path : paths)
                 {
 //                     dump(path);
+                    if (target_board.is_color(path[0]) && target_board.color(path[0]) == nboard.color(path[0]))
+                        ++dematch[path[0]];
+
                     assert(nboard.is_color(path[0]));
                     nboard.move(path[0], path.back());
                     add_res(path, nres);
                 }
+                const int moves = nres.size() - res.size();
+                moves_for_match[target_pos].push_back(moves);
                 if (nres.size() > max_rolls)
                     continue;
 
@@ -1274,7 +1294,26 @@ public:
 
                 last_try_i = try_i;
             }
+//             dump(moves_for_match);
+//             for (auto& it : moves_for_match)
+//             {
+//                 cerr << it << endl;
+//             }
+//             cerr << endl;
+
+            for (auto& p : target_poss)
+            {
+                if (local_best_board.color(p) != target_board.color(p))
+                {
+                    ++fails[p];
+                }
+            }
+
+
+//             dump(dematch);
 //             fprintf(stderr, "%5d / %5d, %f\n", updates, trials, (double)updates / trials);
+
+            ++trytry_i;
         }
         dump(best_score);
         dump(g_timer.get_elapsed());
