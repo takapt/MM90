@@ -1217,12 +1217,17 @@ public:
 //                 const bool diff_color_match = try_i - last_best_i > 10 * unmatches;
 
                 vector<Pos> unmatch_target_poss;
+                vector<double> ratio;
                 rep(y, h) rep(x, w)
                 {
 //                     if (target_board.is_color(x, y) && !board.is_color(x, y))
                     if (target_board.is_color(x, y) && (board.color(x, y) != target_board.color(x, y) || diff_color_match && board.empty(x, y)))
                     {
                         unmatch_target_poss.push_back(Pos(x, y));
+                        if (trytry_i > 0)
+                            ratio.push_back(100 + (double)fails[Pos(x, y)] / trytry_i * 300);
+                        else
+                            ratio.push_back(100);
                     }
                 }
                 if (unmatch_target_poss.empty())
@@ -1245,7 +1250,8 @@ public:
                     }
                 }
 
-                Pos target_pos = unmatch_target_poss[g_rand.next_int(unmatch_target_poss.size())];
+//                 Pos target_pos = unmatch_target_poss[g_rand.next_int(unmatch_target_poss.size())];
+                Pos target_pos = unmatch_target_poss[g_rand.select(ratio)];
 //                 Pos target_pos = unmatch_target_poss[(trytry_i * 10 + try_i) % unmatch_target_poss.size()];
 //                 target_pos = Pos(2, 0);
                 //             if (try_i > 500 && board.empty(Pos(12, 16)))
