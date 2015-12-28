@@ -1013,6 +1013,9 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target, vector<vec
     map<Pos, SearchPathResult> searched_results;
     while (!target_stack.empty())
     {
+        if (g_timer.get_elapsed() > G_TL_SEC)
+            return {};
+
         vector<Pos> del;
         for (int i = 1; i < (int)target_stack.size(); ++i)
             if (board.is_obs(target_stack[i]))
@@ -1190,18 +1193,19 @@ public:
             int trials = 0;
             rep(try_i, max_rolls * 5)
             {
-                if (try_i - last_try_i > min(500, min<int>(max_rolls, 3 * target_poss.size())))
+                if (try_i - last_try_i > min<int>(max_rolls, 3 * target_poss.size()))
                     break;
                 if (g_timer.get_elapsed() > G_TL_SEC)
                     break;
 
+                int unmatches = 0;
+                rep(y, h) rep(x, w)
+                    if (target_board.is_color(x, y) && board.color(x, y) != target_board.color(x, y))
+                        ++unmatches;
+
                 ++trials;
 
                 const bool diff_color_match = try_i - last_best_i > target_poss.size();
-//                 int unmatches = 0;
-//                 rep(y, h) rep(x, w)
-//                     if (target_board.is_color(x, y) && board.color(x, y) != target_board.color(x, y))
-//                         ++unmatches;
 //                 const bool diff_color_match = try_i - last_best_i > 10 * unmatches;
 
                 vector<Pos> unmatch_target_poss;
