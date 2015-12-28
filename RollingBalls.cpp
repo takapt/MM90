@@ -128,7 +128,7 @@ public:
 };
 Timer g_timer;
 #ifdef LOCAL
-// #define USE_TIMER
+#define USE_TIMER
 #ifdef USE_TIMER
 const double G_TL_SEC = 10;
 #else
@@ -495,12 +495,29 @@ struct SearchPathResult
         return buf;
     }
 };
+
+template <typename T>
+void uniq_ordered(vector<T>& a)
+{
+    vector<T> b;
+    set<T> u;
+    for (auto& i : a)
+    {
+        if (!u.count(i))
+        {
+            b.push_back(i);
+            u.insert(i);
+        }
+    }
+    a.swap(b);
+}
+
 set<tuple<ull, int, Pos, Pos>> taboo;
 SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, const vector<bool>& allow_colors, const vector<vector<int>>& match_cost)
 {
     assert(!board.is_wall(start_pos));
-    assert(!board.is_color(start_pos));
-    assert(board.empty(start_pos));
+//     assert(!board.is_color(start_pos));
+//     assert(board.empty(start_pos));
     assert(count(all(allow_colors), true));
 
     const char inf = 51;
@@ -682,8 +699,11 @@ SearchPathResult search_ball_path(const Board& board, const Pos& start_pos, cons
             {
                 need_pos.push_back(start_pos.next(moved_dir(path[path.size() - 2], path.back())));
             }
+            if (board.is_color(start_pos))
+                obs_pos.push_back(start_pos);
 //             dump(path);
-            uniq(obs_pos);
+//             dump(obs_pos);
+            uniq_ordered(obs_pos);
 //             assert(obs_pos.empty());
 
             bool ok = true;
@@ -785,6 +805,31 @@ vector<Pos> restore_full_path(const vector<Pos>& path)
     return full_path;
 }
 
+vector<Pos> restore_full_path(const vector<Pos>& path, const Pos& stop_pos)
+{
+    assert(path.size() >= 2);
+
+    if (stop_pos == path.back())
+        return restore_full_path(path);
+
+    vector<Pos> full_path;
+    rep(i, (int)path.size() - 1)
+    {
+        int dir = moved_dir(path[i], path[i + 1]);
+        Pos p = path[i];
+        while (p != path[i + 1])
+        {
+            full_path.push_back(p);
+            if (p == stop_pos)
+                return full_path;
+
+            p.move(dir);
+        }
+    }
+    assert(false);
+    abort();
+}
+
 struct SearchPathToRemoveResult
 {
     vector<Pos> path;
@@ -820,8 +865,6 @@ SearchPathToRemoveResult search_path_to_remove_ball(Board board, const Pos& star
         tie(cost, is_goal, cur) = q.top();
         q.pop();
 
-        assert(board.empty(cur));
-
         if (is_goal)
         {
             vector<Pos> path = {cur};
@@ -848,7 +891,7 @@ SearchPathToRemoveResult search_path_to_remove_ball(Board board, const Pos& star
 //                 dump(full_path);
 //                 dump(obs_pos);
 //             }
-            assert(obs_pos.empty());
+//             assert(obs_pos.empty());
 //             dump(path);
             return SearchPathToRemoveResult {
                 path,
@@ -869,7 +912,8 @@ SearchPathToRemoveResult search_path_to_remove_ball(Board board, const Pos& star
             else if (board.is_color(cur.next((dir + 2) & 3)))
                 ncost += 2;
 
-            while (!board.is_obs(next))
+            next = cur;
+            while (!board.is_wall(next) && ncost < 1000)
             {
                 assert(!board.is_wall(next));
                 if (board.is_obs(next.next(dir)))
@@ -889,9 +933,8 @@ SearchPathToRemoveResult search_path_to_remove_ball(Board board, const Pos& star
                         q.push(P(gcost, true, next));
                     }
 
-                    const int RECUR_REMOVE_COST = 30000;
+                    const int RECUR_REMOVE_COST = 30;
                     ncost += RECUR_REMOVE_COST;
-                    break;
                 }
 
                 next.move(dir);
@@ -901,18 +944,60 @@ SearchPathToRemoveResult search_path_to_remove_ball(Board board, const Pos& star
     return SearchPathToRemoveResult();
 }
 
-vector<vector<Pos>> remove_balls(Board& board, const Pos& obs_pos, vector<vector<int>> goal_cost)
+vector<vector<Pos>> remove_balls(Board board, const Pos& obs_pos, vector<vector<int>> goal_cost, int depth = 0)
 {
+//     dump(obs_pos);
     assert(board.is_color(obs_pos));
-    auto result_path_to_remove = search_path_to_remove_ball(board, obs_pos, goal_cost);
-    if (!result_path_to_remove.is_valid() || result_path_to_remove.obs_pos.size())
+
+    if (depth >= 3)
         return {};
 
     vector<vector<Pos>> paths;
-    auto& path_to_remove = result_path_to_remove.path;
-    paths.push_back(path_to_remove);
-    board.move(path_to_remove[0], path_to_remove.back());
-    return paths;
+    rep(try_i, 2)
+    {
+        if (board.empty(obs_pos))
+        {
+            assert(paths.size());
+            return paths;
+        }
+
+        auto result_path_to_remove = search_path_to_remove_ball(board, obs_pos, goal_cost);
+        if (!result_path_to_remove.is_valid())
+            return {};
+
+        if (result_path_to_remove.obs_pos.size())
+        {
+            const auto& recur_obs_pos = result_path_to_remove.obs_pos;
+            for (int i = (int)recur_obs_pos.size() - 1; i >= 0 && board.is_color(obs_pos); --i)
+            {
+                if (board.empty(recur_obs_pos[i]))
+                    continue;
+
+                auto ngoal_cost = goal_cost;
+                for (auto& p : restore_full_path(result_path_to_remove.path, recur_obs_pos[i]))
+                    ngoal_cost[p.y][p.x] += 100;
+
+                auto recur_paths = remove_balls(board, recur_obs_pos[i], ngoal_cost, depth + 1);
+                if (recur_paths.empty())
+                    return {};
+
+                for (auto& path : recur_paths)
+                    board.move(path[0], path.back());
+                paths.insert(paths.end(), all(recur_paths));
+            }
+        }
+        else
+        {
+            paths.push_back(result_path_to_remove.path);
+//             if (depth > 1)
+//             {
+//                 dump(depth);
+//                 dump(paths.size());
+//             }
+            return paths;
+        }
+    }
+    return {};
 }
 
 vector<vector<Pos>> search_paths(Board board, const Pos& main_target, vector<vector<int>> match_cost)
@@ -956,7 +1041,7 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target, vector<vec
         target_stack.pop_back();
         assert(count(all(target_stack), target) == 0);
 //         assert(board.empty(target));
-        if (!board.empty(target))
+        if (target_stack.size() > 0 && !board.empty(target))
             continue;
 
 
@@ -968,16 +1053,18 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target, vector<vec
             fill(all(allow_colors), true);
 
         SearchPathResult result = search_ball_path(board, target, allow_colors, match_cost);
-//         dump(result.path);
-//         dump(result.need_pos);
-//         dump(result.obs_pos);
-//         dump(result.size_info());
 
 //         if (target_stack.empty() && main_target == Pos(12, 16))
 //             dump(result.path);
 
         if (!result.is_valid())
             return {};
+
+//         dump(result.path);
+//         dump(result.need_pos);
+//         dump(result.obs_pos);
+//         dump(result.size_info());
+//         cerr << endl;
 
         if (result.obs_pos.size())
         {
@@ -1002,10 +1089,12 @@ vector<vector<Pos>> search_paths(Board board, const Pos& main_target, vector<vec
                     {
                         ok = false;
 
-                        auto paths = remove_balls(board, p, goal_cost);
-                        if (paths.size())
+                        auto paths_to_remove = remove_balls(board, p, goal_cost);
+                        if (paths_to_remove.size())
                         {
-                            paths.insert(paths.end(), all(paths));
+                            for (auto& path : paths_to_remove)
+                                board.move(path[0], path.back());
+                            paths.insert(paths.end(), all(paths_to_remove));
                             updated = true;
                         }
                     }
@@ -1078,13 +1167,13 @@ public:
 
         const int max_rolls = target_poss.size() * 20;
 
-        double best_score = -1;
+        double best_score = start_board.game_score(target_board);;
         vector<string> best_res;
 
 #ifdef USE_TIMER
         while (g_timer.get_elapsed() < G_TL_SEC)
 #else
-        rep(trytry_i, 10)
+        rep(trytry_i, 100)
 #endif
         {
             taboo.clear();
@@ -1092,6 +1181,7 @@ public:
 
             vector<string> local_best_res;
             double local_best_score = -1;
+            Board local_best_board = start_board;
 
             vector<string> res;
             int last_try_i = -1;
@@ -1100,7 +1190,7 @@ public:
             int trials = 0;
             rep(try_i, max_rolls * 5)
             {
-                if (try_i - last_try_i > min<int>(max_rolls, 3 * target_poss.size()))
+                if (try_i - last_try_i > min(500, min<int>(max_rolls, 3 * target_poss.size())))
                     break;
                 if (g_timer.get_elapsed() > G_TL_SEC)
                     break;
@@ -1108,6 +1198,11 @@ public:
                 ++trials;
 
                 const bool diff_color_match = try_i - last_best_i > target_poss.size();
+//                 int unmatches = 0;
+//                 rep(y, h) rep(x, w)
+//                     if (target_board.is_color(x, y) && board.color(x, y) != target_board.color(x, y))
+//                         ++unmatches;
+//                 const bool diff_color_match = try_i - last_best_i > 10 * unmatches;
 
                 vector<Pos> unmatch_target_poss;
                 rep(y, h) rep(x, w)
@@ -1147,6 +1242,8 @@ public:
                 vector<string> nres = res;
                 for (auto& path : paths)
                 {
+//                     dump(path);
+                    assert(nboard.is_color(path[0]));
                     nboard.move(path[0], path.back());
                     add_res(path, nres);
                 }
@@ -1158,6 +1255,7 @@ public:
                 {
                     local_best_score = score;
                     local_best_res = res;
+                    local_best_board = board;
                     last_best_i = try_i;
                 }
 
@@ -1172,7 +1270,7 @@ public:
 
                 last_try_i = try_i;
             }
-            fprintf(stderr, "%5d / %5d, %f\n", updates, trials, (double)updates / trials);
+//             fprintf(stderr, "%5d / %5d, %f\n", updates, trials, (double)updates / trials);
         }
         dump(best_score);
         dump(g_timer.get_elapsed());
