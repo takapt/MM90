@@ -949,7 +949,7 @@ vector<vector<Pos>> remove_balls(Board board, const Pos& obs_pos, vector<vector<
 //     dump(obs_pos);
     assert(board.is_color(obs_pos));
 
-    if (depth >= 3)
+    if (depth >= 4)
         return {};
 
     vector<vector<Pos>> paths;
